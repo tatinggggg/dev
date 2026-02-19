@@ -1,0 +1,833 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Address Book with Bitcoin Verifier</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, Ubuntu, Cantarell, sans-serif;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            min-height: 100vh;
+            padding: 20px;
+        }
+
+        .container {
+            max-width: 1200px;
+            margin: 0 auto;
+        }
+
+        .header {
+            background: white;
+            border-radius: 12px;
+            padding: 30px;
+            margin-bottom: 30px;
+            box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1);
+        }
+
+        .header-content {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            flex-wrap: wrap;
+            gap: 20px;
+        }
+
+        .header-title {
+            display: flex;
+            align-items: center;
+            gap: 15px;
+        }
+
+        .icon {
+            background: #667eea;
+            padding: 12px;
+            border-radius: 10px;
+            color: white;
+            font-size: 24px;
+        }
+
+        h1 {
+            color: #2d3748;
+            font-size: 32px;
+            margin-bottom: 5px;
+        }
+
+        .subtitle {
+            color: #718096;
+            font-size: 14px;
+        }
+
+        .btn {
+            padding: 12px 24px;
+            border: none;
+            border-radius: 8px;
+            font-size: 14px;
+            font-weight: 600;
+            cursor: pointer;
+            display: inline-flex;
+            align-items: center;
+            gap: 8px;
+            transition: all 0.3s;
+        }
+
+        .btn-primary {
+            background: #667eea;
+            color: white;
+        }
+
+        .btn-primary:hover {
+            background: #5568d3;
+        }
+
+        .btn-success {
+            background: #48bb78;
+            color: white;
+        }
+
+        .btn-success:hover {
+            background: #38a169;
+        }
+
+        .btn-danger {
+            background: #f56565;
+            color: white;
+        }
+
+        .btn-danger:hover {
+            background: #e53e3e;
+        }
+
+        .btn-secondary {
+            background: #e2e8f0;
+            color: #2d3748;
+        }
+
+        .btn-secondary:hover {
+            background: #cbd5e0;
+        }
+
+        .form-section {
+            background: #edf2f7;
+            padding: 20px;
+            border-radius: 8px;
+            margin-top: 20px;
+        }
+
+        .form-section h3 {
+            color: #2d3748;
+            margin-bottom: 15px;
+        }
+
+        .form-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(250px, 1fr));
+            gap: 12px;
+            margin-bottom: 12px;
+        }
+
+        .form-group {
+            display: flex;
+            flex-direction: column;
+        }
+
+        label {
+            font-size: 12px;
+            font-weight: 600;
+            color: #4a5568;
+            margin-bottom: 4px;
+        }
+
+        input, textarea {
+            padding: 10px 12px;
+            border: 2px solid #e2e8f0;
+            border-radius: 6px;
+            font-size: 14px;
+            transition: border-color 0.3s;
+        }
+
+        input:focus, textarea:focus {
+            outline: none;
+            border-color: #667eea;
+        }
+
+        textarea {
+            resize: vertical;
+            min-height: 60px;
+        }
+
+        .action-bar {
+            display: flex;
+            flex-wrap: wrap;
+            align-items: center;
+            gap: 12px;
+            margin-top: 20px;
+            padding-top: 20px;
+            border-top: 2px solid #e2e8f0;
+        }
+
+        .action-bar .text-link {
+            color: #667eea;
+            font-weight: 600;
+            cursor: pointer;
+            font-size: 14px;
+        }
+
+        .action-bar .text-link:hover {
+            color: #5568d3;
+        }
+
+        .selected-count {
+            color: #718096;
+            font-size: 14px;
+        }
+
+        .address-list {
+            display: grid;
+            gap: 16px;
+        }
+
+        .address-card {
+            background: white;
+            border-radius: 12px;
+            padding: 24px;
+            box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
+            cursor: pointer;
+            transition: all 0.3s;
+            border: 2px solid transparent;
+        }
+
+        .address-card:hover {
+            box-shadow: 0 4px 8px rgba(0, 0, 0, 0.15);
+        }
+
+        .address-card.selected {
+            border-color: #667eea;
+            background: #edf2f7;
+        }
+
+        .card-content {
+            display: flex;
+            gap: 16px;
+            align-items: start;
+        }
+
+        .checkbox {
+            width: 24px;
+            height: 24px;
+            border: 2px solid #cbd5e0;
+            border-radius: 4px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            flex-shrink: 0;
+            margin-top: 4px;
+        }
+
+        .checkbox.checked {
+            background: #667eea;
+            border-color: #667eea;
+            color: white;
+        }
+
+        .card-info {
+            flex: 1;
+        }
+
+        .card-name {
+            font-size: 18px;
+            font-weight: 700;
+            color: #2d3748;
+            margin-bottom: 8px;
+        }
+
+        .card-detail {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            color: #718096;
+            font-size: 14px;
+            margin-bottom: 4px;
+        }
+
+        .bitcoin-address {
+            background: #faf089;
+            padding: 8px 12px;
+            border-radius: 6px;
+            font-family: 'Courier New', monospace;
+            font-size: 12px;
+            word-break: break-all;
+            margin-top: 8px;
+        }
+
+        .bitcoin-valid {
+            background: #c6f6d5;
+            color: #22543d;
+            padding: 4px 8px;
+            border-radius: 4px;
+            font-size: 11px;
+            font-weight: 600;
+            display: inline-block;
+            margin-left: 8px;
+        }
+
+        .bitcoin-invalid {
+            background: #fed7d7;
+            color: #742a2a;
+            padding: 4px 8px;
+            border-radius: 4px;
+            font-size: 11px;
+            font-weight: 600;
+            display: inline-block;
+            margin-left: 8px;
+        }
+
+        .modal {
+            display: none;
+            position: fixed;
+            top: 0;
+            left: 0;
+            right: 0;
+            bottom: 0;
+            background: rgba(0, 0, 0, 0.5);
+            z-index: 1000;
+            align-items: center;
+            justify-content: center;
+            padding: 20px;
+        }
+
+        .modal.active {
+            display: flex;
+        }
+
+        .modal-content {
+            background: white;
+            border-radius: 12px;
+            padding: 30px;
+            max-width: 600px;
+            width: 100%;
+            max-height: 80vh;
+            overflow-y: auto;
+        }
+
+        .modal-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 20px;
+        }
+
+        .modal-title {
+            font-size: 24px;
+            font-weight: 700;
+            color: #2d3748;
+        }
+
+        .close-btn {
+            background: none;
+            border: none;
+            font-size: 28px;
+            color: #a0aec0;
+            cursor: pointer;
+            padding: 0;
+            width: 32px;
+            height: 32px;
+        }
+
+        .close-btn:hover {
+            color: #718096;
+        }
+
+        .recipient-list {
+            background: #f7fafc;
+            border-radius: 8px;
+            padding: 20px;
+            margin: 20px 0;
+            max-height: 300px;
+            overflow-y: auto;
+        }
+
+        .recipient-item {
+            padding: 12px 0;
+            border-bottom: 1px solid #e2e8f0;
+        }
+
+        .recipient-item:last-child {
+            border-bottom: none;
+        }
+
+        .recipient-name {
+            font-weight: 600;
+            color: #2d3748;
+            margin-bottom: 4px;
+        }
+
+        .recipient-email {
+            font-size: 13px;
+            color: #718096;
+            margin-bottom: 4px;
+        }
+
+        .recipient-btc {
+            font-family: 'Courier New', monospace;
+            font-size: 11px;
+            color: #4a5568;
+            word-break: break-all;
+        }
+
+        .modal-actions {
+            display: flex;
+            gap: 12px;
+            margin-top: 20px;
+        }
+
+        .modal-actions .btn {
+            flex: 1;
+        }
+
+        .empty-state {
+            background: white;
+            border-radius: 12px;
+            padding: 60px 20px;
+            text-align: center;
+            color: #a0aec0;
+        }
+
+        .verifier-section {
+            background: white;
+            border-radius: 12px;
+            padding: 24px;
+            margin-bottom: 30px;
+            box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1);
+        }
+
+        .verifier-title {
+            font-size: 20px;
+            font-weight: 700;
+            color: #2d3748;
+            margin-bottom: 16px;
+            display: flex;
+            align-items: center;
+            gap: 10px;
+        }
+
+        .verifier-input-group {
+            display: flex;
+            gap: 12px;
+            margin-bottom: 16px;
+        }
+
+        .verifier-input-group input {
+            flex: 1;
+        }
+
+        .verification-result {
+            padding: 16px;
+            border-radius: 8px;
+            margin-top: 16px;
+            font-weight: 600;
+        }
+
+        .verification-result.valid {
+            background: #c6f6d5;
+            color: #22543d;
+        }
+
+        .verification-result.invalid {
+            background: #fed7d7;
+            color: #742a2a;
+        }
+
+        @media (max-width: 768px) {
+            .header-content {
+                flex-direction: column;
+                align-items: stretch;
+            }
+
+            .form-grid {
+                grid-template-columns: 1fr;
+            }
+
+            .action-bar {
+                flex-direction: column;
+                align-items: stretch;
+            }
+
+            .modal-actions {
+                flex-direction: column;
+            }
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <!-- Header -->
+        <div class="header">
+            <div class="header-content">
+                <div class="header-title">
+                    <div class="icon">📧</div>
+                    <div>
+                        <h1>Address Book</h1>
+                        <p class="subtitle"><span id="addressCount">4</span> contacts</p>
+                    </div>
+                </div>
+                <button class="btn btn-primary" onclick="toggleAddForm()">
+                    ➕ Add Contact
+                </button>
+            </div>
+
+            <!-- Add Form -->
+            <div id="addForm" class="form-section" style="display: none;">
+                <h3>New Contact</h3>
+                <form onsubmit="addAddress(event)">
+                    <div class="form-grid">
+                        <div class="form-group">
+                            <label>Full Name *</label>
+                            <input type="text" id="newName" required>
+                        </div>
+                        <div class="form-group">
+                            <label>Email Address *</label>
+                            <input type="email" id="newEmail" required>
+                        </div>
+                    </div>
+                    <div class="form-group">
+                        <label>Physical Address *</label>
+                        <textarea id="newAddress" required></textarea>
+                    </div>
+                    <div class="form-group">
+                        <label>Bitcoin Address (optional)</label>
+                        <input type="text" id="newBitcoin" placeholder="Enter Bitcoin address to verify">
+                    </div>
+                    <div style="display: flex; gap: 12px; margin-top: 16px;">
+                        <button type="submit" class="btn btn-primary">Add Contact</button>
+                        <button type="button" class="btn btn-secondary" onclick="toggleAddForm()">Cancel</button>
+                    </div>
+                </form>
+            </div>
+
+            <!-- Action Bar -->
+            <div class="action-bar" id="actionBar">
+                <span class="text-link" onclick="selectAll()">Select All</span>
+                <span class="selected-count" id="selectedCount" style="display: none;"></span>
+                <button class="btn btn-success" id="sendBtn" style="display: none;" onclick="showSendModal()">
+                    📤 Send to Selected
+                </button>
+                <button class="btn btn-danger" id="deleteBtn" style="display: none;" onclick="deleteSelected()">
+                    🗑️ Delete Selected
+                </button>
+            </div>
+        </div>
+
+        <!-- Bitcoin Verifier Section -->
+        <div class="verifier-section">
+            <div class="verifier-title">
+                ₿ Bitcoin Address Verifier
+            </div>
+            <p style="color: #718096; font-size: 14px; margin-bottom: 16px;">
+                Verify any Bitcoin address format (Legacy, SegWit, Native SegWit)
+            </p>
+            <div class="verifier-input-group">
+                <input type="text" id="verifyBitcoinInput" placeholder="Enter Bitcoin address to verify (e.g., 1A1zP1eP5QGefi2DMPTfTL5SLmv7DivfNa)">
+                <button class="btn btn-primary" onclick="verifyBitcoinAddress()">Verify</button>
+            </div>
+            <div id="verificationResult"></div>
+        </div>
+
+        <!-- Address List -->
+        <div id="addressList" class="address-list"></div>
+    </div>
+
+    <!-- Send Modal -->
+    <div id="sendModal" class="modal">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h2 class="modal-title">Send To</h2>
+                <button class="close-btn" onclick="closeSendModal()">×</button>
+            </div>
+            <p style="color: #718096; margin-bottom: 20px;">
+                Sending to <span id="recipientCount">0</span> recipient(s):
+            </p>
+            <div class="recipient-list" id="recipientList"></div>
+            <div class="modal-actions">
+                <button class="btn btn-primary" onclick="confirmSend()">Confirm Send</button>
+                <button class="btn btn-secondary" onclick="closeSendModal()">Cancel</button>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        // Bitcoin address validation
+        function isValidBitcoinAddress(address) {
+            if (!address) return { valid: false, type: 'None' };
+            
+            // Legacy addresses (P2PKH) - starts with 1
+            const legacyRegex = /^[1][a-km-zA-HJ-NP-Z1-9]{25,34}$/;
+            
+            // P2SH addresses - starts with 3
+            const p2shRegex = /^[3][a-km-zA-HJ-NP-Z1-9]{25,34}$/;
+            
+            // Bech32 (SegWit) addresses - starts with bc1
+            const bech32Regex = /^(bc1)[a-z0-9]{39,87}$/;
+            
+            if (legacyRegex.test(address)) {
+                return { valid: true, type: 'Legacy (P2PKH)' };
+            } else if (p2shRegex.test(address)) {
+                return { valid: true, type: 'P2SH (SegWit Compatible)' };
+            } else if (bech32Regex.test(address)) {
+                return { valid: true, type: 'Native SegWit (Bech32)' };
+            }
+            
+            return { valid: false, type: 'Invalid' };
+        }
+
+        function verifyBitcoinAddress() {
+            const input = document.getElementById('verifyBitcoinInput');
+            const resultDiv = document.getElementById('verificationResult');
+            const address = input.value.trim();
+            
+            if (!address) {
+                resultDiv.innerHTML = '<div class="verification-result invalid">Please enter a Bitcoin address</div>';
+                return;
+            }
+            
+            const validation = isValidBitcoinAddress(address);
+            
+            if (validation.valid) {
+                resultDiv.innerHTML = `
+                    <div class="verification-result valid">
+                        ✓ Valid Bitcoin Address<br>
+                        <span style="font-weight: 400;">Type: ${validation.type}</span>
+                    </div>
+                `;
+            } else {
+                resultDiv.innerHTML = `
+                    <div class="verification-result invalid">
+                        ✗ Invalid Bitcoin Address<br>
+                        <span style="font-weight: 400;">Please check the address format</span>
+                    </div>
+                `;
+            }
+        }
+
+        // Address Book functionality
+        let addresses = [
+            {
+                id: 1,
+                name: 'John Doe',
+                email: 'john.doe@email.com',
+                address: '123 Main St, New York, NY 10001',
+                bitcoin: '1A1zP1eP5QGefi2DMPTfTL5SLmv7DivfNa'
+            },
+            {
+                id: 2,
+                name: 'Jane Smith',
+                email: 'jane.smith@email.com',
+                address: '456 Oak Ave, Los Angeles, CA 90001',
+                bitcoin: '3J98t1WpEZ73CNmYviecrnyiWrnqRhWNLy'
+            },
+            {
+                id: 3,
+                name: 'Bob Johnson',
+                email: 'bob.j@email.com',
+                address: '789 Pine Rd, Chicago, IL 60601',
+                bitcoin: 'bc1qar0srrr7xfkvy5l643lydnw9re59gtzzwf5mdq'
+            },
+            {
+                id: 4,
+                name: 'Alice Williams',
+                email: 'alice.w@email.com',
+                address: '321 Elm St, Houston, TX 77001',
+                bitcoin: ''
+            }
+        ];
+
+        let selectedIds = [];
+
+        function renderAddresses() {
+            const listDiv = document.getElementById('addressList');
+            
+            if (addresses.length === 0) {
+                listDiv.innerHTML = '<div class="empty-state">No contacts yet. Click "Add Contact" to get started.</div>';
+                return;
+            }
+            
+            listDiv.innerHTML = addresses.map(addr => {
+                const isSelected = selectedIds.includes(addr.id);
+                const btcValidation = isValidBitcoinAddress(addr.bitcoin);
+                
+                return `
+                    <div class="address-card ${isSelected ? 'selected' : ''}" onclick="toggleSelect(${addr.id})">
+                        <div class="card-content">
+                            <div class="checkbox ${isSelected ? 'checked' : ''}">
+                                ${isSelected ? '✓' : ''}
+                            </div>
+                            <div class="card-info">
+                                <div class="card-name">${addr.name}</div>
+                                <div class="card-detail">
+                                    📧 ${addr.email}
+                                </div>
+                                <div class="card-detail">
+                                    📍 ${addr.address}
+                                </div>
+                                ${addr.bitcoin ? `
+                                    <div class="card-detail">
+                                        ₿ <span class="bitcoin-address">${addr.bitcoin}</span>
+                                        <span class="${btcValidation.valid ? 'bitcoin-valid' : 'bitcoin-invalid'}">
+                                            ${btcValidation.valid ? '✓ ' + btcValidation.type : '✗ Invalid'}
+                                        </span>
+                                    </div>
+                                ` : ''}
+                            </div>
+                        </div>
+                    </div>
+                `;
+            }).join('');
+            
+            document.getElementById('addressCount').textContent = addresses.length;
+        }
+
+        function toggleSelect(id) {
+            if (selectedIds.includes(id)) {
+                selectedIds = selectedIds.filter(selectedId => selectedId !== id);
+            } else {
+                selectedIds.push(id);
+            }
+            updateUI();
+        }
+
+        function selectAll() {
+            if (selectedIds.length === addresses.length) {
+                selectedIds = [];
+            } else {
+                selectedIds = addresses.map(addr => addr.id);
+            }
+            updateUI();
+        }
+
+        function updateUI() {
+            renderAddresses();
+            
+            const countSpan = document.getElementById('selectedCount');
+            const sendBtn = document.getElementById('sendBtn');
+            const deleteBtn = document.getElementById('deleteBtn');
+            
+            if (selectedIds.length > 0) {
+                countSpan.textContent = `${selectedIds.length} selected`;
+                countSpan.style.display = 'inline';
+                sendBtn.style.display = 'inline-flex';
+                deleteBtn.style.display = 'inline-flex';
+            } else {
+                countSpan.style.display = 'none';
+                sendBtn.style.display = 'none';
+                deleteBtn.style.display = 'none';
+            }
+        }
+
+        function toggleAddForm() {
+            const form = document.getElementById('addForm');
+            form.style.display = form.style.display === 'none' ? 'block' : 'none';
+            
+            if (form.style.display === 'none') {
+                document.getElementById('newName').value = '';
+                document.getElementById('newEmail').value = '';
+                document.getElementById('newAddress').value = '';
+                document.getElementById('newBitcoin').value = '';
+            }
+        }
+
+        function addAddress(event) {
+            event.preventDefault();
+            
+            const name = document.getElementById('newName').value;
+            const email = document.getElementById('newEmail').value;
+            const address = document.getElementById('newAddress').value;
+            const bitcoin = document.getElementById('newBitcoin').value;
+            
+            const newId = Math.max(...addresses.map(a => a.id), 0) + 1;
+            
+            addresses.push({
+                id: newId,
+                name: name,
+                email: email,
+                address: address,
+                bitcoin: bitcoin
+            });
+            
+            toggleAddForm();
+            updateUI();
+        }
+
+        function deleteSelected() {
+            if (confirm(`Delete ${selectedIds.length} selected contact(s)?`)) {
+                addresses = addresses.filter(addr => !selectedIds.includes(addr.id));
+                selectedIds = [];
+                updateUI();
+            }
+        }
+
+        function showSendModal() {
+            if (selectedIds.length === 0) {
+                alert('Please select at least one contact');
+                return;
+            }
+            
+            const modal = document.getElementById('sendModal');
+            const recipientList = document.getElementById('recipientList');
+            const recipientCount = document.getElementById('recipientCount');
+            
+            const selectedAddresses = addresses.filter(addr => selectedIds.includes(addr.id));
+            
+            recipientCount.textContent = selectedAddresses.length;
+            
+            recipientList.innerHTML = selectedAddresses.map(addr => {
+                const btcValidation = isValidBitcoinAddress(addr.bitcoin);
+                return `
+                    <div class="recipient-item">
+                        <div class="recipient-name">${addr.name}</div>
+                        <div class="recipient-email">${addr.email}</div>
+                        <div class="recipient-email">${addr.address}</div>
+                        ${addr.bitcoin ? `
+                            <div class="recipient-btc">
+                                ₿ ${addr.bitcoin} 
+                                <span style="color: ${btcValidation.valid ? '#22543d' : '#742a2a'}; font-weight: 600;">
+                                    ${btcValidation.valid ? '(✓ Valid)' : '(✗ Invalid)'}
+                                </span>
+                            </div>
+                        ` : ''}
+                    </div>
+                `;
+            }).join('');
+            
+            modal.classList.add('active');
+        }
+
+        function closeSendModal() {
+            document.getElementById('sendModal').classList.remove('active');
+        }
+
+        function confirmSend() {
+            const count = selectedIds.length;
+            alert(`Message sent to ${count} recipient(s)!`);
+            closeSendModal();
+            selectedIds = [];
+            updateUI();
+        }
+
+        // Close modal when clicking outside
+        document.getElementById('sendModal').addEventListener('click', function(e) {
+            if (e.target === this) {
+                closeSendModal();
+            }
+        });
+
+        // Initialize
+        renderAddresses();
+    </script>
+</body>
+</html>
