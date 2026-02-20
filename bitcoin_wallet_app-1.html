@@ -1,0 +1,1066 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Bitcoin Cold Wallet Verifier</title>
+    <script crossorigin src="https://unpkg.com/react@18/umd/react.production.min.js"></script>
+    <script crossorigin src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js"></script>
+    <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/crypto-js/4.1.1/crypto-js.min.js"></script>
+</head>
+<body>
+    <div id="root"></div>
+
+    <script type="text/babel">
+        const { useState, useEffect } = React;
+
+        // Bitcoin ECDSA secp256k1 implementation
+        const P = BigInt('0xFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFEFFFFFC2F');
+        const N = BigInt('0xFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFEBAAEDCE6AF48A03BBFD25E8CD0364141');
+        const Gx = BigInt('0x79BE667EF9DCBBAC55A06295CE870B07029BFCDB2DCE28D959F2815B16F81798');
+        const Gy = BigInt('0x483ADA7726A3C4655DA4FBFC0E1108A8FD17B448A68554199C47D08FFB10D4B8');
+
+        function modInv(a, m) {
+            a = ((a % m) + m) % m;
+            let [oldR, r] = [a, m];
+            let [oldS, s] = [1n, 0n];
+
+            while (r !== 0n) {
+                const quotient = oldR / r;
+                [oldR, r] = [r, oldR - quotient * r];
+                [oldS, s] = [s, oldS - quotient * s];
+            }
+
+            return oldR === 1n ? ((oldS % m) + m) % m : null;
+        }
+
+        function pointAdd(p1, p2) {
+            if (!p1) return p2;
+            if (!p2) return p1;
+            if (p1.x === p2.x && p1.y !== p2.y) return null;
+
+            let lam;
+            if (p1.x === p2.x && p1.y === p2.y) {
+                lam = (3n * p1.x * p1.x * modInv(2n * p1.y, P)) % P;
+            } else {
+                lam = ((p2.y - p1.y) * modInv(p2.x - p1.x, P)) % P;
+            }
+
+            const x3 = (lam * lam - p1.x - p2.x) % P;
+            const y3 = (lam * (p1.x - x3) - p1.y) % P;
+
+            return { x: ((x3 % P) + P) % P, y: ((y3 % P) + P) % P };
+        }
+
+        function pointMultiply(k, point) {
+            let result = null;
+            let addend = point;
+
+            while (k > 0n) {
+                if (k & 1n) {
+                    result = pointAdd(result, addend);
+                }
+                addend = pointAdd(addend, addend);
+                k >>= 1n;
+            }
+
+            return result;
+        }
+
+        function generatePrivateKey(passphrase) {
+            const hash = CryptoJS.SHA256(passphrase);
+            return hash.toString(CryptoJS.enc.Hex);
+        }
+
+        function getPublicKey(privateKeyHex) {
+            const privateKeyInt = BigInt('0x' + privateKeyHex);
+            const point = pointMultiply(privateKeyInt % N, { x: Gx, y: Gy });
+            return point;
+        }
+
+        function publicKeyToAddress(publicKey) {
+            const xHex = publicKey.x.toString(16).padStart(64, '0');
+            const yHex = publicKey.y.toString(16).padStart(64, '0');
+            const publicKeyHex = '04' + xHex + yHex;
+
+            // SHA256
+            const sha256Hash = CryptoJS.SHA256(CryptoJS.enc.Hex.parse(publicKeyHex));
+            
+            // RIPEMD160
+            const ripemd160Hash = CryptoJS.RIPEMD160(sha256Hash);
+            const versionedHash = '00' + ripemd160Hash.toString();
+
+            // Checksum
+            const checksum = CryptoJS.SHA256(CryptoJS.SHA256(CryptoJS.enc.Hex.parse(versionedHash)))
+                .toString().substring(0, 8);
+
+            const addressHex = versionedHash + checksum;
+            return base58Encode(addressHex);
+        }
+
+        function base58Encode(hex) {
+            const alphabet = '123456789ABCDEFGHJKLMNPQRSTUVWXYZabcdefghijkmnopqrstuvwxyz';
+            let num = BigInt('0x' + hex);
+            let encoded = '';
+
+            while (num > 0n) {
+                const remainder = num % 58n;
+                num = num / 58n;
+                encoded = alphabet[Number(remainder)] + encoded;
+            }
+
+            // Add leading 1s for leading 00s
+            for (let i = 0; i < hex.length && hex.substr(i, 2) === '00'; i += 2) {
+                encoded = '1' + encoded;
+            }
+
+            return encoded;
+        }
+
+        function signTransaction(privateKeyHex, rawTxHex) {
+            try {
+                const privateKeyInt = BigInt('0x' + privateKeyHex);
+                
+                // Create transaction hash
+                const txWords = CryptoJS.enc.Hex.parse(rawTxHex);
+                const txHash = CryptoJS.SHA256(CryptoJS.SHA256(txWords));
+                const txHashHex = txHash.toString();
+                const z = BigInt('0x' + txHashHex);
+
+                // Generate k (simplified - should use RFC 6979 in production)
+                const kHex = CryptoJS.SHA256(privateKeyHex + txHashHex).toString().substring(0, 64);
+                const k = BigInt('0x' + kHex) % (N - 1n) + 1n;
+
+                // Calculate r
+                const point = pointMultiply(k, { x: Gx, y: Gy });
+                const r = point.x % N;
+
+                // Calculate s
+                const kInv = modInv(k, N);
+                let s = (kInv * (z + r * privateKeyInt)) % N;
+
+                // Ensure low s value (BIP 62)
+                if (s > N / 2n) {
+                    s = N - s;
+                }
+
+                // Encode to DER
+                const rHex = r.toString(16).padStart(64, '0');
+                const sHex = s.toString(16).padStart(64, '0');
+                
+                const rBytes = rHex.length / 2;
+                const sBytes = sHex.length / 2;
+                
+                const signatureDER = '30' + 
+                    (rBytes + sBytes + 4).toString(16).padStart(2, '0') + 
+                    '02' + rBytes.toString(16).padStart(2, '0') + rHex +
+                    '02' + sBytes.toString(16).padStart(2, '0') + sHex;
+
+                const signatureWithHashType = signatureDER + '01';
+
+                // Create scriptSig
+                const publicKey = getPublicKey(privateKeyHex);
+                const xHex = publicKey.x.toString(16).padStart(64, '0');
+                const yHex = publicKey.y.toString(16).padStart(64, '0');
+                const publicKeyHex = '04' + xHex + yHex;
+
+                const sigLength = (signatureWithHashType.length / 2).toString(16).padStart(2, '0');
+                const pubKeyLength = (publicKeyHex.length / 2).toString(16).padStart(2, '0');
+
+                const scriptSig = sigLength + signatureWithHashType + pubKeyLength + publicKeyHex;
+                const signedTx = rawTxHex + scriptSig;
+
+                return {
+                    txHash: txHashHex,
+                    signature: signatureWithHashType,
+                    signedTx: signedTx
+                };
+            } catch (error) {
+                throw new Error('Signing failed: ' + error.message);
+            }
+        }
+
+        function BitcoinWalletApp() {
+            const [generationMethod, setGenerationMethod] = useState('passphrase');
+            const [passphrase, setPassphrase] = useState('');
+            const [vanityPrefix, setVanityPrefix] = useState('');
+            const [vanityAttempts, setVanityAttempts] = useState(0);
+            const [isGenerating, setIsGenerating] = useState(false);
+            const [privateKey, setPrivateKey] = useState('');
+            const [publicKey, setPublicKey] = useState(null);
+            const [address, setAddress] = useState('');
+            const [rawTx, setRawTx] = useState('0100000001abcdef1234567890abcdef1234567890abcdef1234567890abcdef1234567890000000001976a914000000000000000000000000000000000000000088acffffffff0100f2052a010000001976a914000000000000000000000000000000000000000088ac00000000');
+            const [signResult, setSignResult] = useState(null);
+            const [error, setError] = useState('');
+            const [activeTab, setActiveTab] = useState('generate');
+            const [terminalLog, setTerminalLog] = useState([]);
+
+            const addLog = (message, type = 'info') => {
+                const timestamp = new Date().toLocaleTimeString();
+                setTerminalLog(prev => [...prev, { timestamp, message, type }]);
+            };
+
+            const generateRandomWallet = () => {
+                try {
+                    setError('');
+                    addLog('Generating random wallet...', 'info');
+                    
+                    // Generate random bytes
+                    const randomBytes = new Uint8Array(32);
+                    crypto.getRandomValues(randomBytes);
+                    const randomHex = Array.from(randomBytes)
+                        .map(b => b.toString(16).padStart(2, '0'))
+                        .join('');
+                    
+                    const privKey = randomHex;
+                    const pubKey = getPublicKey(privKey);
+                    const addr = publicKeyToAddress(pubKey);
+
+                    setPrivateKey(privKey);
+                    setPublicKey(pubKey);
+                    setAddress(addr);
+                    
+                    addLog(`✓ Wallet generated successfully`, 'success');
+                    addLog(`Address: ${addr}`, 'success');
+                } catch (err) {
+                    setError('Error generating wallet: ' + err.message);
+                    addLog('✗ Error: ' + err.message, 'error');
+                }
+            };
+
+            const generatePassphraseWallet = () => {
+                try {
+                    if (!passphrase.trim()) {
+                        setError('Please enter a passphrase');
+                        return;
+                    }
+
+                    setError('');
+                    addLog('Generating wallet from passphrase...', 'info');
+                    
+                    const privKey = generatePrivateKey(passphrase);
+                    const pubKey = getPublicKey(privKey);
+                    const addr = publicKeyToAddress(pubKey);
+
+                    setPrivateKey(privKey);
+                    setPublicKey(pubKey);
+                    setAddress(addr);
+                    
+                    addLog(`✓ Wallet generated successfully`, 'success');
+                    addLog(`Address: ${addr}`, 'success');
+                } catch (err) {
+                    setError('Error generating wallet: ' + err.message);
+                    addLog('✗ Error: ' + err.message, 'error');
+                }
+            };
+
+            const generateVanityAddress = async () => {
+                if (!vanityPrefix.trim()) {
+                    setError('Please enter a vanity prefix');
+                    return;
+                }
+
+                // Validate prefix
+                const validChars = '123456789ABCDEFGHJKLMNPQRSTUVWXYZabcdefghijkmnopqrstuvwxyz';
+                for (let char of vanityPrefix) {
+                    if (!validChars.includes(char)) {
+                        setError('Invalid character in prefix. Use Base58 characters only.');
+                        return;
+                    }
+                }
+
+                setError('');
+                setIsGenerating(true);
+                setVanityAttempts(0);
+                addLog(`Searching for address starting with: 1${vanityPrefix}...`, 'info');
+
+                let attempts = 0;
+                const startTime = Date.now();
+                
+                const searchBatch = () => {
+                    return new Promise((resolve) => {
+                        setTimeout(() => {
+                            for (let i = 0; i < 100; i++) {
+                                attempts++;
+                                
+                                const randomBytes = new Uint8Array(32);
+                                crypto.getRandomValues(randomBytes);
+                                const randomHex = Array.from(randomBytes)
+                                    .map(b => b.toString(16).padStart(2, '0'))
+                                    .join('');
+                                
+                                const pubKey = getPublicKey(randomHex);
+                                const addr = publicKeyToAddress(pubKey);
+                                
+                                if (addr.substring(1, 1 + vanityPrefix.length) === vanityPrefix) {
+                                    const elapsed = ((Date.now() - startTime) / 1000).toFixed(2);
+                                    setPrivateKey(randomHex);
+                                    setPublicKey(pubKey);
+                                    setAddress(addr);
+                                    setIsGenerating(false);
+                                    addLog(`✓ Vanity address found after ${attempts} attempts in ${elapsed}s!`, 'success');
+                                    addLog(`Address: ${addr}`, 'success');
+                                    resolve(true);
+                                    return;
+                                }
+                            }
+                            setVanityAttempts(attempts);
+                            resolve(false);
+                        }, 0);
+                    });
+                };
+
+                const search = async () => {
+                    while (isGenerating) {
+                        const found = await searchBatch();
+                        if (found) break;
+                        if (attempts > 100000) {
+                            setIsGenerating(false);
+                            setError('Search stopped after 100,000 attempts. Try a shorter prefix.');
+                            addLog('✗ Search stopped. Try a shorter prefix.', 'error');
+                            break;
+                        }
+                    }
+                };
+
+                search();
+            };
+
+            const stopVanitySearch = () => {
+                setIsGenerating(false);
+                addLog('Search stopped by user', 'info');
+            };
+
+            const generateWallet = () => {
+                if (generationMethod === 'random') {
+                    generateRandomWallet();
+                } else if (generationMethod === 'passphrase') {
+                    generatePassphraseWallet();
+                } else if (generationMethod === 'vanity') {
+                    generateVanityAddress();
+                }
+            };
+
+            const signTx = () => {
+                try {
+                    if (!privateKey) {
+                        setError('Please generate a wallet first');
+                        return;
+                    }
+                    if (!rawTx.trim()) {
+                        setError('Please enter a raw transaction');
+                        return;
+                    }
+
+                    setError('');
+                    addLog('Signing transaction...', 'info');
+                    const result = signTransaction(privateKey, rawTx);
+                    setSignResult(result);
+                    addLog('✓ Transaction signed successfully', 'success');
+                } catch (err) {
+                    setError('Error signing transaction: ' + err.message);
+                    addLog('✗ Error: ' + err.message, 'error');
+                }
+            };
+
+            const copyToClipboard = (text) => {
+                navigator.clipboard.writeText(text);
+                addLog('Copied to clipboard', 'info');
+            };
+
+            const clearTerminal = () => {
+                setTerminalLog([]);
+            };
+
+            return (
+                <div style={{
+                    minHeight: '100vh',
+                    backgroundColor: '#0a0a0a',
+                    padding: '10px',
+                    fontFamily: '"Courier New", Courier, monospace',
+                    color: '#00ff00'
+                }}>
+                    <div style={{
+                        maxWidth: '1200px',
+                        margin: '0 auto',
+                        backgroundColor: '#1a1a1a',
+                        border: '2px solid #00ff00',
+                        borderRadius: '4px',
+                        boxShadow: '0 0 20px rgba(0, 255, 0, 0.3)'
+                    }}>
+                        {/* Header */}
+                        <div style={{
+                            backgroundColor: '#000',
+                            padding: '15px 20px',
+                            borderBottom: '2px solid #00ff00',
+                            display: 'flex',
+                            justifyContent: 'space-between',
+                            alignItems: 'center',
+                            flexWrap: 'wrap',
+                            gap: '10px'
+                        }}>
+                            <h1 style={{ 
+                                margin: 0, 
+                                fontSize: '18px',
+                                fontWeight: 'bold',
+                                color: '#00ff00'
+                            }}>
+                                ₿ BITCOIN_COLD_WALLET.exe
+                            </h1>
+                            <div style={{ 
+                                fontSize: '11px', 
+                                color: '#00ff00',
+                                opacity: 0.7
+                            }}>
+                                v1.0.0 | ECDSA_secp256k1
+                            </div>
+                        </div>
+
+                        {/* Tabs */}
+                        <div style={{ 
+                            display: 'flex', 
+                            borderBottom: '1px solid #00ff00',
+                            flexWrap: 'wrap'
+                        }}>
+                            <button
+                                onClick={() => setActiveTab('generate')}
+                                style={{
+                                    flex: '1 1 150px',
+                                    padding: '12px 15px',
+                                    border: 'none',
+                                    backgroundColor: activeTab === 'generate' ? '#003300' : '#000',
+                                    color: '#00ff00',
+                                    cursor: 'pointer',
+                                    fontFamily: 'inherit',
+                                    fontSize: '12px',
+                                    borderRight: '1px solid #00ff00',
+                                    transition: 'all 0.3s'
+                                }}
+                            >
+                                [1] GENERATE
+                            </button>
+                            <button
+                                onClick={() => setActiveTab('sign')}
+                                style={{
+                                    flex: '1 1 150px',
+                                    padding: '12px 15px',
+                                    border: 'none',
+                                    backgroundColor: activeTab === 'sign' ? '#003300' : '#000',
+                                    color: '#00ff00',
+                                    cursor: 'pointer',
+                                    fontFamily: 'inherit',
+                                    fontSize: '12px',
+                                    borderRight: '1px solid #00ff00',
+                                    transition: 'all 0.3s'
+                                }}
+                            >
+                                [2] SIGN_TX
+                            </button>
+                            <button
+                                onClick={() => setActiveTab('terminal')}
+                                style={{
+                                    flex: '1 1 150px',
+                                    padding: '12px 15px',
+                                    border: 'none',
+                                    backgroundColor: activeTab === 'terminal' ? '#003300' : '#000',
+                                    color: '#00ff00',
+                                    cursor: 'pointer',
+                                    fontFamily: 'inherit',
+                                    fontSize: '12px',
+                                    transition: 'all 0.3s'
+                                }}
+                            >
+                                [3] TERMINAL
+                            </button>
+                        </div>
+
+                        <div style={{ padding: '20px' }}>
+                            {error && (
+                                <div style={{
+                                    backgroundColor: '#330000',
+                                    border: '1px solid #ff0000',
+                                    color: '#ff0000',
+                                    padding: '10px',
+                                    marginBottom: '15px',
+                                    fontSize: '12px'
+                                }}>
+                                    ERROR: {error}
+                                </div>
+                            )}
+
+                            {/* Generate Tab */}
+                            {activeTab === 'generate' && (
+                                <div>
+                                    {/* Generation Method Selection */}
+                                    <div style={{ marginBottom: '20px' }}>
+                                        <label style={{
+                                            display: 'block',
+                                            marginBottom: '10px',
+                                            fontSize: '13px',
+                                            color: '#00ff00'
+                                        }}>
+                                            &gt; SELECT_GENERATION_METHOD:
+                                        </label>
+                                        <div style={{ 
+                                            display: 'grid', 
+                                            gridTemplateColumns: 'repeat(auto-fit, minmax(150px, 1fr))',
+                                            gap: '10px' 
+                                        }}>
+                                            <button
+                                                onClick={() => setGenerationMethod('random')}
+                                                style={{
+                                                    padding: '12px',
+                                                    backgroundColor: generationMethod === 'random' ? '#003300' : '#000',
+                                                    color: '#00ff00',
+                                                    border: generationMethod === 'random' ? '2px solid #00ff00' : '1px solid #00ff00',
+                                                    cursor: 'pointer',
+                                                    fontFamily: 'inherit',
+                                                    fontSize: '11px',
+                                                    transition: 'all 0.3s'
+                                                }}
+                                            >
+                                                [RANDOM]
+                                            </button>
+                                            <button
+                                                onClick={() => setGenerationMethod('passphrase')}
+                                                style={{
+                                                    padding: '12px',
+                                                    backgroundColor: generationMethod === 'passphrase' ? '#003300' : '#000',
+                                                    color: '#00ff00',
+                                                    border: generationMethod === 'passphrase' ? '2px solid #00ff00' : '1px solid #00ff00',
+                                                    cursor: 'pointer',
+                                                    fontFamily: 'inherit',
+                                                    fontSize: '11px',
+                                                    transition: 'all 0.3s'
+                                                }}
+                                            >
+                                                [PASSPHRASE]
+                                            </button>
+                                            <button
+                                                onClick={() => setGenerationMethod('vanity')}
+                                                style={{
+                                                    padding: '12px',
+                                                    backgroundColor: generationMethod === 'vanity' ? '#003300' : '#000',
+                                                    color: '#00ff00',
+                                                    border: generationMethod === 'vanity' ? '2px solid #00ff00' : '1px solid #00ff00',
+                                                    cursor: 'pointer',
+                                                    fontFamily: 'inherit',
+                                                    fontSize: '11px',
+                                                    transition: 'all 0.3s'
+                                                }}
+                                            >
+                                                [VANITY]
+                                            </button>
+                                        </div>
+                                    </div>
+
+                                    {/* Input Fields Based on Method */}
+                                    {generationMethod === 'passphrase' && (
+                                        <div style={{ marginBottom: '15px' }}>
+                                            <label style={{
+                                                display: 'block',
+                                                marginBottom: '8px',
+                                                fontSize: '12px',
+                                                color: '#00ff00'
+                                            }}>
+                                                &gt; INPUT_PASSPHRASE:
+                                            </label>
+                                            <input
+                                                type="text"
+                                                value={passphrase}
+                                                onChange={(e) => setPassphrase(e.target.value)}
+                                                placeholder="Enter passphrase..."
+                                                style={{
+                                                    width: '100%',
+                                                    padding: '10px',
+                                                    backgroundColor: '#000',
+                                                    border: '1px solid #00ff00',
+                                                    color: '#00ff00',
+                                                    fontSize: '12px',
+                                                    fontFamily: 'inherit',
+                                                    boxSizing: 'border-box'
+                                                }}
+                                            />
+                                        </div>
+                                    )}
+
+                                    {generationMethod === 'vanity' && (
+                                        <div style={{ marginBottom: '15px' }}>
+                                            <label style={{
+                                                display: 'block',
+                                                marginBottom: '8px',
+                                                fontSize: '12px',
+                                                color: '#00ff00'
+                                            }}>
+                                                &gt; VANITY_PREFIX (after '1'):
+                                            </label>
+                                            <input
+                                                type="text"
+                                                value={vanityPrefix}
+                                                onChange={(e) => setVanityPrefix(e.target.value)}
+                                                placeholder="e.g., BTC, ABC, 123..."
+                                                maxLength="6"
+                                                style={{
+                                                    width: '100%',
+                                                    padding: '10px',
+                                                    backgroundColor: '#000',
+                                                    border: '1px solid #00ff00',
+                                                    color: '#00ff00',
+                                                    fontSize: '12px',
+                                                    fontFamily: 'inherit',
+                                                    boxSizing: 'border-box'
+                                                }}
+                                            />
+                                            <div style={{ 
+                                                fontSize: '10px', 
+                                                color: '#00ff00', 
+                                                opacity: 0.6,
+                                                marginTop: '5px'
+                                            }}>
+                                                NOTE: Longer prefixes take exponentially more time
+                                            </div>
+                                            {isGenerating && (
+                                                <div style={{ 
+                                                    marginTop: '10px', 
+                                                    fontSize: '11px',
+                                                    color: '#ffff00'
+                                                }}>
+                                                    SEARCHING... Attempts: {vanityAttempts}
+                                                </div>
+                                            )}
+                                        </div>
+                                    )}
+
+                                    {generationMethod === 'random' && (
+                                        <div style={{ 
+                                            marginBottom: '15px',
+                                            padding: '10px',
+                                            backgroundColor: '#003300',
+                                            border: '1px solid #00ff00',
+                                            fontSize: '11px'
+                                        }}>
+                                            RANDOM: Uses cryptographically secure random number generator
+                                        </div>
+                                    )}
+
+                                    <button
+                                        onClick={isGenerating ? stopVanitySearch : generateWallet}
+                                        style={{
+                                            width: '100%',
+                                            padding: '12px',
+                                            backgroundColor: isGenerating ? '#330000' : '#003300',
+                                            color: isGenerating ? '#ff0000' : '#00ff00',
+                                            border: '2px solid ' + (isGenerating ? '#ff0000' : '#00ff00'),
+                                            cursor: 'pointer',
+                                            fontSize: '13px',
+                                            fontWeight: 'bold',
+                                            fontFamily: 'inherit',
+                                            marginBottom: '20px'
+                                        }}
+                                    >
+                                        {isGenerating ? '[STOP_SEARCH]' : '[EXECUTE_GENERATION]'}
+                                    </button>
+
+                                    {/* Results */}
+                                    {address && (
+                                        <div>
+                                            <div style={{
+                                                backgroundColor: '#000',
+                                                border: '1px solid #00ff00',
+                                                padding: '15px',
+                                                marginBottom: '15px',
+                                                fontSize: '11px'
+                                            }}>
+                                                <div style={{ 
+                                                    display: 'flex', 
+                                                    justifyContent: 'space-between', 
+                                                    marginBottom: '8px',
+                                                    flexWrap: 'wrap',
+                                                    gap: '10px'
+                                                }}>
+                                                    <span style={{ color: '#00ff00' }}>
+                                                        &gt; BTC_ADDRESS:
+                                                    </span>
+                                                    <button
+                                                        onClick={() => copyToClipboard(address)}
+                                                        style={{
+                                                            padding: '3px 10px',
+                                                            backgroundColor: '#003300',
+                                                            color: '#00ff00',
+                                                            border: '1px solid #00ff00',
+                                                            fontSize: '10px',
+                                                            cursor: 'pointer',
+                                                            fontFamily: 'inherit'
+                                                        }}
+                                                    >
+                                                        [COPY]
+                                                    </button>
+                                                </div>
+                                                <div style={{
+                                                    color: '#00ff00',
+                                                    wordBreak: 'break-all',
+                                                    fontWeight: 'bold'
+                                                }}>
+                                                    {address}
+                                                </div>
+                                            </div>
+
+                                            <div style={{
+                                                backgroundColor: '#331100',
+                                                border: '1px solid #ff9900',
+                                                padding: '15px',
+                                                marginBottom: '15px',
+                                                fontSize: '11px'
+                                            }}>
+                                                <div style={{ 
+                                                    display: 'flex', 
+                                                    justifyContent: 'space-between', 
+                                                    marginBottom: '8px',
+                                                    flexWrap: 'wrap',
+                                                    gap: '10px'
+                                                }}>
+                                                    <span style={{ color: '#ff9900' }}>
+                                                        &gt; PRIVATE_KEY [CONFIDENTIAL]:
+                                                    </span>
+                                                    <button
+                                                        onClick={() => copyToClipboard(privateKey)}
+                                                        style={{
+                                                            padding: '3px 10px',
+                                                            backgroundColor: '#331100',
+                                                            color: '#ff9900',
+                                                            border: '1px solid #ff9900',
+                                                            fontSize: '10px',
+                                                            cursor: 'pointer',
+                                                            fontFamily: 'inherit'
+                                                        }}
+                                                    >
+                                                        [COPY]
+                                                    </button>
+                                                </div>
+                                                <div style={{
+                                                    color: '#ff9900',
+                                                    wordBreak: 'break-all',
+                                                    fontSize: '10px'
+                                                }}>
+                                                    {privateKey}
+                                                </div>
+                                            </div>
+
+                                            {publicKey && (
+                                                <div style={{
+                                                    backgroundColor: '#001133',
+                                                    border: '1px solid #0099ff',
+                                                    padding: '15px',
+                                                    fontSize: '10px'
+                                                }}>
+                                                    <span style={{ color: '#0099ff', display: 'block', marginBottom: '8px' }}>
+                                                        &gt; PUBLIC_KEY:
+                                                    </span>
+                                                    <div style={{
+                                                        color: '#0099ff',
+                                                        wordBreak: 'break-all'
+                                                    }}>
+                                                        x: {publicKey.x.toString(16).padStart(64, '0')}
+                                                        <br />
+                                                        y: {publicKey.y.toString(16).padStart(64, '0')}
+                                                    </div>
+                                                </div>
+                                            )}
+                                        </div>
+                                    )}
+                                </div>
+                            )}
+
+                            {/* Sign Tab */}
+                            {activeTab === 'sign' && (
+                                <div>
+                                    {!privateKey && (
+                                        <div style={{
+                                            backgroundColor: '#331100',
+                                            border: '1px solid #ff9900',
+                                            padding: '12px',
+                                            marginBottom: '15px',
+                                            color: '#ff9900',
+                                            fontSize: '11px'
+                                        }}>
+                                            WARNING: Generate wallet first in [1] GENERATE tab
+                                        </div>
+                                    )}
+
+                                    <div style={{ marginBottom: '15px' }}>
+                                        <label style={{
+                                            display: 'block',
+                                            marginBottom: '8px',
+                                            fontSize: '12px',
+                                            color: '#00ff00'
+                                        }}>
+                                            &gt; RAW_TRANSACTION_HEX:
+                                        </label>
+                                        <textarea
+                                            value={rawTx}
+                                            onChange={(e) => setRawTx(e.target.value)}
+                                            placeholder="Paste raw transaction hex..."
+                                            rows="4"
+                                            style={{
+                                                width: '100%',
+                                                padding: '10px',
+                                                backgroundColor: '#000',
+                                                border: '1px solid #00ff00',
+                                                color: '#00ff00',
+                                                fontSize: '11px',
+                                                fontFamily: 'inherit',
+                                                boxSizing: 'border-box',
+                                                resize: 'vertical'
+                                            }}
+                                        />
+                                    </div>
+
+                                    <button
+                                        onClick={signTx}
+                                        disabled={!privateKey}
+                                        style={{
+                                            width: '100%',
+                                            padding: '12px',
+                                            backgroundColor: privateKey ? '#003300' : '#1a1a1a',
+                                            color: privateKey ? '#00ff00' : '#666',
+                                            border: '2px solid ' + (privateKey ? '#00ff00' : '#666'),
+                                            cursor: privateKey ? 'pointer' : 'not-allowed',
+                                            fontSize: '13px',
+                                            fontWeight: 'bold',
+                                            fontFamily: 'inherit',
+                                            marginBottom: '20px'
+                                        }}
+                                    >
+                                        [EXECUTE_SIGNING]
+                                    </button>
+
+                                    {signResult && (
+                                        <div>
+                                            <div style={{
+                                                backgroundColor: '#000',
+                                                border: '1px solid #00ff00',
+                                                padding: '15px',
+                                                marginBottom: '15px',
+                                                fontSize: '11px'
+                                            }}>
+                                                <div style={{ 
+                                                    display: 'flex', 
+                                                    justifyContent: 'space-between', 
+                                                    marginBottom: '8px',
+                                                    flexWrap: 'wrap',
+                                                    gap: '10px'
+                                                }}>
+                                                    <span style={{ color: '#00ff00' }}>
+                                                        &gt; TX_HASH:
+                                                    </span>
+                                                    <button
+                                                        onClick={() => copyToClipboard(signResult.txHash)}
+                                                        style={{
+                                                            padding: '3px 10px',
+                                                            backgroundColor: '#003300',
+                                                            color: '#00ff00',
+                                                            border: '1px solid #00ff00',
+                                                            fontSize: '10px',
+                                                            cursor: 'pointer',
+                                                            fontFamily: 'inherit'
+                                                        }}
+                                                    >
+                                                        [COPY]
+                                                    </button>
+                                                </div>
+                                                <div style={{
+                                                    color: '#00ff00',
+                                                    wordBreak: 'break-all',
+                                                    fontSize: '10px'
+                                                }}>
+                                                    {signResult.txHash}
+                                                </div>
+                                            </div>
+
+                                            <div style={{
+                                                backgroundColor: '#001133',
+                                                border: '1px solid #0099ff',
+                                                padding: '15px',
+                                                marginBottom: '15px',
+                                                fontSize: '11px'
+                                            }}>
+                                                <div style={{ 
+                                                    display: 'flex', 
+                                                    justifyContent: 'space-between', 
+                                                    marginBottom: '8px',
+                                                    flexWrap: 'wrap',
+                                                    gap: '10px'
+                                                }}>
+                                                    <span style={{ color: '#0099ff' }}>
+                                                        &gt; SIGNATURE_DER+SIGHASH:
+                                                    </span>
+                                                    <button
+                                                        onClick={() => copyToClipboard(signResult.signature)}
+                                                        style={{
+                                                            padding: '3px 10px',
+                                                            backgroundColor: '#001133',
+                                                            color: '#0099ff',
+                                                            border: '1px solid #0099ff',
+                                                            fontSize: '10px',
+                                                            cursor: 'pointer',
+                                                            fontFamily: 'inherit'
+                                                        }}
+                                                    >
+                                                        [COPY]
+                                                    </button>
+                                                </div>
+                                                <div style={{
+                                                    color: '#0099ff',
+                                                    wordBreak: 'break-all',
+                                                    fontSize: '10px'
+                                                }}>
+                                                    {signResult.signature}
+                                                </div>
+                                            </div>
+
+                                            <div style={{
+                                                backgroundColor: '#330033',
+                                                border: '1px solid #ff00ff',
+                                                padding: '15px',
+                                                marginBottom: '15px',
+                                                fontSize: '11px',
+                                                maxHeight: '200px',
+                                                overflowY: 'auto'
+                                            }}>
+                                                <div style={{ 
+                                                    display: 'flex', 
+                                                    justifyContent: 'space-between', 
+                                                    marginBottom: '8px',
+                                                    flexWrap: 'wrap',
+                                                    gap: '10px'
+                                                }}>
+                                                    <span style={{ color: '#ff00ff' }}>
+                                                        &gt; SIGNED_TX_HEX:
+                                                    </span>
+                                                    <button
+                                                        onClick={() => copyToClipboard(signResult.signedTx)}
+                                                        style={{
+                                                            padding: '3px 10px',
+                                                            backgroundColor: '#330033',
+                                                            color: '#ff00ff',
+                                                            border: '1px solid #ff00ff',
+                                                            fontSize: '10px',
+                                                            cursor: 'pointer',
+                                                            fontFamily: 'inherit'
+                                                        }}
+                                                    >
+                                                        [COPY]
+                                                    </button>
+                                                </div>
+                                                <div style={{
+                                                    color: '#ff00ff',
+                                                    wordBreak: 'break-all',
+                                                    fontSize: '10px'
+                                                }}>
+                                                    {signResult.signedTx}
+                                                </div>
+                                            </div>
+
+                                            <div style={{
+                                                padding: '12px',
+                                                backgroundColor: '#003300',
+                                                border: '2px solid #00ff00',
+                                                textAlign: 'center',
+                                                color: '#00ff00',
+                                                fontWeight: 'bold',
+                                                fontSize: '12px'
+                                            }}>
+                                                [SUCCESS] TRANSACTION_SIGNED
+                                            </div>
+                                        </div>
+                                    )}
+                                </div>
+                            )}
+
+                            {/* Terminal Tab */}
+                            {activeTab === 'terminal' && (
+                                <div>
+                                    <div style={{ 
+                                        display: 'flex', 
+                                        justifyContent: 'space-between', 
+                                        marginBottom: '15px',
+                                        alignItems: 'center',
+                                        flexWrap: 'wrap',
+                                        gap: '10px'
+                                    }}>
+                                        <span style={{ fontSize: '13px', color: '#00ff00' }}>
+                                            &gt; SYSTEM_LOG:
+                                        </span>
+                                        <button
+                                            onClick={clearTerminal}
+                                            style={{
+                                                padding: '6px 12px',
+                                                backgroundColor: '#330000',
+                                                color: '#ff0000',
+                                                border: '1px solid #ff0000',
+                                                fontSize: '11px',
+                                                cursor: 'pointer',
+                                                fontFamily: 'inherit'
+                                            }}
+                                        >
+                                            [CLEAR]
+                                        </button>
+                                    </div>
+
+                                    <div style={{
+                                        backgroundColor: '#000',
+                                        border: '1px solid #00ff00',
+                                        padding: '15px',
+                                        minHeight: '400px',
+                                        maxHeight: '500px',
+                                        overflowY: 'auto',
+                                        fontSize: '11px'
+                                    }}>
+                                        {terminalLog.length === 0 ? (
+                                            <div style={{ color: '#666' }}>
+                                                System ready. Waiting for commands...
+                                            </div>
+                                        ) : (
+                                            terminalLog.map((log, idx) => (
+                                                <div key={idx} style={{ 
+                                                    marginBottom: '5px',
+                                                    color: log.type === 'error' ? '#ff0000' : 
+                                                           log.type === 'success' ? '#00ff00' : '#00ff00'
+                                                }}>
+                                                    <span style={{ opacity: 0.6 }}>[{log.timestamp}]</span> {log.message}
+                                                </div>
+                                            ))
+                                        )}
+                                    </div>
+                                </div>
+                            )}
+                        </div>
+
+                        {/* Footer */}
+                        <div style={{
+                            backgroundColor: '#000',
+                            padding: '15px',
+                            borderTop: '2px solid #00ff00',
+                            fontSize: '10px',
+                            color: '#00ff00'
+                        }}>
+                            <div style={{ marginBottom: '8px', opacity: 0.8 }}>
+                                [!] SECURITY_WARNINGS:
+                            </div>
+                            <ul style={{ margin: '0', paddingLeft: '20px', opacity: 0.6 }}>
+                                <li>NEVER share private keys | Educational use only</li>
+                                <li>Vanity generation time increases exponentially with prefix length</li>
+                                <li>Always verify on trusted node before broadcast</li>
+                                <li>ECDSA secp256k1 | DER encoding | SIGHASH_ALL</li>
+                            </ul>
+                        </div>
+                    </div>
+                </div>
+            );
+        }
+
+        ReactDOM.render(<BitcoinWalletApp />, document.getElementById('root'));
+    </script>
+</body>
+</html>
