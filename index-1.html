@@ -1,0 +1,733 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Bitcoin Transaction Verifier</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;600;700&family=Manrope:wght@400;600;700;800&display=swap" rel="stylesheet">
+    <link rel="stylesheet" href="style.css">
+</head>
+<body>
+    <div class="container">
+<body>
+<div class="container">
+    <header>
+        <div class="logo">
+            <div class="logo-icon">₿</div>
+            <div>
+                <h1>Bitcoin Transaction Verifier</h1>
+                <p class="subtitle">Decode, verify, and build raw Bitcoin transactions with ease</p>
+                <p class="developer-credit">Developed by TAM TAM</p>
+            </div>
+        </div>
+    </header>
+
+    <!-- Mobile Navigation -->
+    <button class="mobile-nav-toggle" id="mobileNavToggle" onclick="toggleMobileNav()">
+        <span id="mobileNavLabel">📝 Raw Transaction Decoder</span>
+        <em class="mnt-chevron" id="mntChevron">▾</em>
+    </button>
+    <div class="mobile-nav-drawer" id="mobileNavDrawer">
+        <button class="mnav-item active" data-tab="tx-decoder" onclick="switchMobileTab(this)">📝 Raw Transaction Decoder</button>
+        <button class="mnav-item" data-tab="address-lookup" onclick="switchMobileTab(this)">🔎 Address Lookup</button>
+        <button class="mnav-item" data-tab="tx-builder" onclick="switchMobileTab(this)">⚡ Transaction Builder</button>
+        <button class="mnav-item" data-tab="address-book" onclick="switchMobileTab(this)">📓 Address Book</button>
+        <button class="mnav-item" data-tab="broadcast-tx" onclick="switchMobileTab(this)">📡 Broadcast & Mempool</button>
+    </div>
+
+    <!-- Tab Navigation -->
+    <div class="tabs">
+        <button class="tab-btn active" data-tab="tx-decoder">Raw Transaction Decoder</button>
+        <button class="tab-btn" data-tab="address-lookup">Address Lookup</button>
+        <button class="tab-btn" data-tab="tx-builder">Transaction Builder</button>
+        <button class="tab-btn" data-tab="address-book">📓 Address Book</button>
+        <button class="tab-btn" data-tab="broadcast-tx">📡 Broadcast</button>
+    </div>
+
+    <!-- Raw Transaction Decoder Tab -->
+    <div class="card tab-content active" id="tx-decoder">
+        <div class="card-header">
+            <div class="card-icon input">📝</div>
+            <h2 class="card-title">Raw Transaction Input</h2>
+        </div>
+
+        <div class="form-group">
+            <label class="label-with-help">
+                Raw Transaction (Hex)
+                <span class="help-icon" title="Paste your raw Bitcoin transaction in hexadecimal format">?</span>
+            </label>
+            <textarea id="rawTxInput" placeholder="Paste your raw transaction here (hexadecimal format)..."></textarea>
+        </div>
+
+        <div class="example-tx">
+            <p><strong>Need an example?</strong> Try this sample transaction:</p>
+            <a href="#" class="example-link" id="loadExample">Click to load example transaction</a>
+        </div>
+
+        <div class="button-group">
+            <button id="decodeBtn">🔍 Decode & Verify Transaction</button>
+            <button class="btn-secondary" id="clearBtn">Clear</button>
+        </div>
+
+        <div class="loading" id="loading">
+            <div class="spinner"></div>
+            <span>Decoding transaction...</span>
+        </div>
+    </div>
+
+    <!-- Address Lookup Tab -->
+    <div class="card tab-content" id="address-lookup">
+        <div class="card-header">
+            <div class="card-icon input">🔎</div>
+            <h2 class="card-title">Bitcoin Address Lookup</h2>
+        </div>
+
+        <div class="form-group">
+            <label class="label-with-help">
+                Bitcoin Address
+                <span class="help-icon" title="Enter a Bitcoin address to view transaction history and UTXOs">?</span>
+            </label>
+            <input type="text" id="addressInput" placeholder="Enter Bitcoin address (e.g., 1A1zP1eP5QGefi2DMPTfTL5SLmv7DivfNa)">
+        </div>
+
+        <div class="example-tx">
+            <p><strong>Need an example?</strong> Try these addresses:</p>
+            <a href="#" class="example-link address-example" data-address="1A1zP1eP5QGefi2DMPTfTL5SLmv7DivfNa">1A1zP1eP5QGefi2DMPTfTL5SLmv7DivfNa (Satoshi's address)</a>
+            <a href="#" class="example-link address-example" data-address="3Cbq7aT1tY8kMxWLbitaG7yT6bPbKChq64">3Cbq7aT1tY8kMxWLbitaG7yT6bPbKChq64 (P2SH address)</a>
+        </div>
+
+        <div class="button-group">
+            <button id="lookupBtn">🔍 Lookup Address</button>
+            <button class="btn-secondary" id="clearAddressBtn">Clear</button>
+        </div>
+
+        <div class="loading" id="addressLoading">
+            <div class="spinner"></div>
+            <span>Fetching address data from blockchain...</span>
+        </div>
+    </div>
+
+    <!-- Transaction Builder Tab -->
+    <div class="card tab-content" id="tx-builder">
+        <div class="card-header">
+            <div class="card-icon verify">⚡</div>
+            <h2 class="card-title">Transaction Builder</h2>
+        </div>
+
+        <!-- Mode Toggle -->
+        <div class="builder-mode-toggle">
+            <button class="mode-btn active" id="modeNormal" onclick="switchBuilderMode('normal')">🔧 Normal</button>
+            <button class="mode-btn" id="modeBatch" onclick="switchBuilderMode('batch')">📦 Batch Transfer</button>
+        </div>
+
+        <!-- BATCH TRANSFER PANEL -->
+        <div id="batchPanel" style="display:none;">
+            <div class="builder-section">
+                <h3 class="section-title">📥 Transaction Inputs (UTXOs)</h3>
+                <div class="form-group">
+                    <label class="label-with-help">
+                        Fetch UTXOs from Address (Optional)
+                        <span class="help-icon" title="Enter an address to automatically load available UTXOs">?</span>
+                    </label>
+                    <div class="input-with-button">
+                        <input type="text" id="batchUtxoFetchAddress" placeholder="Enter Bitcoin address to fetch UTXOs">
+                        <button onclick="fetchBatchUtxos()" class="btn-inline">Fetch UTXOs</button>
+                    </div>
+                </div>
+                <div id="batchUtxoList" class="utxo-selection-list"></div>
+                <div id="batchLoading" class="loading"><div class="spinner"></div><span>Fetching UTXOs...</span></div>
+            </div>
+
+            <div class="builder-section">
+                <div style="display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:0.75rem;margin-bottom:1rem;">
+                    <h3 class="section-title" style="margin:0;">📤 Batch Recipients</h3>
+                    <div style="display:flex;gap:0.5rem;flex-wrap:wrap;">
+                        <button class="btn-secondary" style="font-size:0.82rem;padding:0.5rem 0.9rem;" onclick="openBatchAbPicker()">📓 Multi-Select from Address Book</button>
+                        <button class="btn-secondary" style="font-size:0.82rem;padding:0.5rem 0.9rem;" onclick="addBatchRow()">+ Add Recipient</button>
+                        <button class="batch-equal-btn" onclick="distributeBatchEqual()">⚖️ Distribute Equally</button>
+                    </div>
+                </div>
+
+                <div class="batch-table-wrap">
+                    <table class="batch-table">
+                        <thead>
+                            <tr>
+                                <th>#</th>
+                                <th>Name / Label</th>
+                                <th class="batch-addr-cell">Recipient Address</th>
+                                <th class="batch-amt-cell">Amount (BTC)</th>
+                                <th>sat/vB %</th>
+                                <th></th>
+                            </tr>
+                        </thead>
+                        <tbody id="batchTableBody"></tbody>
+                    </table>
+                </div>
+
+                <div class="batch-summary-bar">
+                    <div class="batch-summary-item">
+                        <span class="batch-summary-label">Recipients</span>
+                        <span class="batch-summary-value" id="batchRecipCount">0</span>
+                    </div>
+                    <div class="batch-summary-item">
+                        <span class="batch-summary-label">Total Input</span>
+                        <span class="batch-summary-value" id="batchTotalInput">0.00000000 BTC</span>
+                    </div>
+                    <div class="batch-summary-item">
+                        <span class="batch-summary-label">Total Output</span>
+                        <span class="batch-summary-value" id="batchTotalOutput">0.00000000 BTC</span>
+                    </div>
+                    <div class="batch-summary-item">
+                        <span class="batch-summary-label">Fee</span>
+                        <span class="batch-summary-value" id="batchFeeDisplay">0 sats</span>
+                    </div>
+                    <div class="batch-summary-item">
+                        <span class="batch-summary-label">Remaining</span>
+                        <span class="batch-summary-value ok" id="batchRemaining">0.00000000 BTC</span>
+                    </div>
+                </div>
+
+                <div class="form-row" style="margin-top:1rem;">
+                    <div class="form-group">
+                        <label>Fee (satoshis)</label>
+                        <input type="number" id="batchFee" value="1000" oninput="updateBatchSummary()">
+                    </div>
+                    <div class="form-group">
+                        <label>Change Address</label>
+                        <input type="text" id="batchChangeAddress" placeholder="Address to receive change">
+                    </div>
+                </div>
+            </div>
+
+            <div class="button-group">
+                <button onclick="buildBatchTransaction()">📦 Build Batch Transaction</button>
+                <button class="btn-secondary" onclick="clearBatchBuilder()">Clear All</button>
+            </div>
+            <div id="batchBuilderLoading" class="loading"><div class="spinner"></div><span>Building batch transaction...</span></div>
+        </div>
+
+        <!-- NORMAL BUILDER PANEL -->
+        <div id="normalPanel">
+            
+            <div class="form-group">
+                <label class="label-with-help">
+                    Fetch UTXOs from Address (Optional)
+                    <span class="help-icon" title="Enter an address to automatically load available UTXOs">?</span>
+                </label>
+                <div class="input-with-button">
+                    <input type="text" id="utxoFetchAddress" placeholder="Enter Bitcoin address to fetch UTXOs">
+                    <button id="fetchUtxosBtn" class="btn-inline">Fetch UTXOs</button>
+                </div>
+            </div>
+
+            <div id="utxoList" class="utxo-selection-list"></div>
+
+            <button id="addManualUtxoBtn" class="btn-secondary">+ Add UTXO Manually</button>
+        </div>
+
+        <div class="builder-section">
+            <h3 class="section-title">📤 Transaction Outputs</h3>
+            
+            <div id="outputList" class="output-list">
+                <div class="output-item" data-index="0">
+                    <div class="output-header">
+                        <span class="output-label">Output #0</span>
+                        <button class="btn-remove" onclick="removeOutput(0)">✕</button>
+                    </div>
+                    <div class="form-row">
+                        <div class="form-group">
+                            <label>Recipient Address</label>
+                            <input type="text" class="output-address" placeholder="Bitcoin address">
+                            <button class="ab-pick-btn" onclick="abOpenPicker(this)">📓 Pick from Address Book</button>
+                        </div>
+                        <div class="form-group">
+                            <label>Amount (BTC)</label>
+                            <input type="number" step="0.00000001" class="output-amount" placeholder="0.00000000" data-output-index="0" oninput="updateBalancePreview()">
+                            <div class="amount-hint">
+                                Available: <span class="available-balance">0.00000000</span> BTC 
+                                <span class="separator">•</span>
+                                <a href="#" class="use-all-link" onclick="event.preventDefault(); setMaxAmount(0)">Use All</a>
+                            </div>
+                            <div class="balance-preview" style="display: none;">
+                                <span class="preview-label">Remaining:</span>
+                                <span class="preview-value">0.00000000 BTC</span>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <button id="addOutputBtn" class="btn-secondary">+ Add Output</button>
+        </div>
+
+        <div class="builder-section">
+            <h3 class="section-title">⚙️ Transaction Settings</h3>
+            
+            <div class="form-row">
+                <div class="form-group">
+                    <label class="label-with-help">
+                        Fee (satoshis)
+                        <span class="help-icon" title="Transaction fee in satoshis. Recommended: 1-10 sat/byte">?</span>
+                    </label>
+                    <input type="number" id="txFee" value="1000" placeholder="1000">
+                </div>
+                <div class="form-group">
+                    <label class="label-with-help">
+                        Locktime
+                        <span class="help-icon" title="Block height or timestamp when transaction becomes valid">?</span>
+                    </label>
+                    <input type="number" id="txLocktime" value="0" placeholder="0">
+                </div>
+            </div>
+
+            <div class="form-group">
+                <label>
+                    <input type="checkbox" id="addChangeOutput" checked>
+                    Automatically add change output
+                </label>
+            </div>
+
+            <div class="form-group" id="changeAddressGroup">
+                <label>Change Address (for leftover funds)</label>
+                <input type="text" id="changeAddress" placeholder="Address to receive change">
+                <button class="ab-pick-btn" onclick="abOpenPickerForChange()">📓 Pick from Address Book</button>
+            </div>
+        </div>
+
+        <div class="transaction-summary" id="txSummary">
+            <h3 class="section-title">📊 Live Transaction Summary</h3>
+            <div class="stats-grid">
+                <div class="stat-card">
+                    <div class="stat-label">Total Input</div>
+                    <div class="stat-value" id="summaryInput">0.00000000 BTC</div>
+                    <div class="stat-sub" id="summaryInputSats">0 sats</div>
+                </div>
+                <div class="stat-card">
+                    <div class="stat-label">Total Output</div>
+                    <div class="stat-value" id="summaryOutput">0.00000000 BTC</div>
+                    <div class="stat-sub" id="summaryOutputSats">0 sats</div>
+                </div>
+                <div class="stat-card">
+                    <div class="stat-label">Network Fee</div>
+                    <div class="stat-value highlight" id="summaryFee">0 sats</div>
+                    <div class="stat-sub" id="summaryFeeBtc">0.00000000 BTC</div>
+                </div>
+                <div class="stat-card" id="summaryRemainingCard">
+                    <div class="stat-label">Remaining</div>
+                    <div class="stat-value" id="summaryChange">0.00000000 BTC</div>
+                    <div class="stat-sub" id="summaryChangeSats">0 sats</div>
+                </div>
+            </div>
+
+            <!-- Progress bar -->
+            <div class="tx-progress-wrap">
+                <div class="tx-progress-bar">
+                    <div class="tx-progress-fill" id="txProgressFill" style="width:0%"></div>
+                    <div class="tx-progress-fee" id="txProgressFee" style="width:0%"></div>
+                </div>
+                <div class="tx-progress-labels">
+                    <span id="txProgressOutputLabel" style="color:var(--accent-blue)">Output: 0%</span>
+                    <span id="txProgressFeeLabel" style="color:var(--accent-orange)">Fee: 0%</span>
+                    <span id="txProgressRemainLabel" style="color:var(--accent-green)">Remaining: 100%</span>
+                </div>
+            </div>
+
+            <div class="tx-remaining-banner" id="txRemainingBanner">
+                <span id="txRemainingIcon">💡</span>
+                <span id="txRemainingMsg">Select UTXOs and enter output amounts to see live balance.</span>
+            </div>
+        </div>
+
+        <div class="button-group">
+            <button id="buildTxBtn">🔨 Build Raw Transaction</button>
+            <button class="btn-secondary" id="clearBuilderBtn">Clear All</button>
+        </div>
+
+        <div class="loading" id="builderLoading">
+            <div class="spinner"></div>
+            <span>Building transaction...</span>
+        </div>
+        </div><!-- end normalPanel -->
+    </div>
+
+    <!-- TXID Detail Modal -->
+    <div id="txDetailOverlay" class="tx-detail-overlay">
+        <div class="tx-detail-modal">
+            <div class="tx-detail-header">
+                <div>
+                    <div class="tx-detail-title">🔍 Transaction Details</div>
+                    <div class="tx-detail-subtitle" id="txDetailHash">—</div>
+                </div>
+                <button class="tx-detail-close" onclick="closeTxDetail()">✕</button>
+            </div>
+            <div id="txDetailBody"></div>
+        </div>
+    </div>
+
+    <!-- Address Detail Modal -->
+    <div id="addrDetailOverlay" class="addr-detail-overlay">
+        <div class="addr-detail-modal">
+            <div class="addr-detail-header">
+                <div>
+                    <div class="tx-detail-title">📍 Address Details</div>
+                    <div class="tx-detail-subtitle" id="addrDetailAddr">—</div>
+                </div>
+                <button class="addr-detail-close" onclick="closeAddrDetail()">✕</button>
+            </div>
+            <div id="addrDetailBody"></div>
+        </div>
+    </div>
+
+    <!-- Batch AB Multi-Picker Modal -->
+    <div id="batchAbPickerOverlay" class="ab-picker-overlay">
+        <div class="ab-picker-modal" style="max-width:560px;">
+            <div class="ab-picker-header">
+                <div>
+                    <div class="ab-picker-title">📓 Multi-Select Recipients</div>
+                    <div class="ab-picker-subtitle">Select multiple contacts to add as batch recipients</div>
+                </div>
+                <button class="ab-picker-close" onclick="closeBatchAbPicker()">✕</button>
+            </div>
+            <div style="padding:0.5rem 0;margin-bottom:0.5rem;">
+                <input type="text" id="batchAbSearch" placeholder="🔍  Search contacts..." oninput="renderBatchAbList()" style="width:100%;background:var(--bg-primary);border:1px solid var(--border);border-radius:8px;padding:0.5rem 0.85rem;color:var(--text-primary);font-family:'Manrope',sans-serif;">
+            </div>
+            <div id="batchAbList" class="ab-picker-list"></div>
+            <div class="batch-ab-picker-footer">
+                <span class="batch-ab-sel-count" id="batchAbSelCount">0 selected</span>
+                <div style="display:flex;gap:0.5rem;">
+                    <button class="ab-btn ab-btn-ghost" onclick="closeBatchAbPicker()">Cancel</button>
+                    <button class="ab-btn ab-btn-primary" onclick="confirmBatchAbSelection()">✓ Add Selected</button>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Address Book Tab -->
+    <div class="card tab-content" id="address-book">
+        <div class="card-header">
+            <div class="card-icon verify" style="background: linear-gradient(135deg, var(--accent-orange), #ffb347);">📓</div>
+            <h2 class="card-title">Address Book</h2>
+        </div>
+
+        <!-- Header bar: count + actions -->
+        <div class="ab-header-bar">
+            <div class="ab-title">
+                Contacts
+                <span class="ab-count-badge" id="abCount">4</span>
+                <span class="ab-storage-badge" id="abStorageBadge" title="Address book is saved in your browser's localStorage">
+                    <span class="ab-storage-dot"></span> Local Storage
+                </span>
+            </div>
+            <div class="ab-action-row">
+                <span class="ab-link" onclick="abSelectAll()">Select All</span>
+                <span class="ab-selected-label" id="abSelectedLabel" style="display:none;"></span>
+                <button class="ab-btn ab-btn-success" id="abSendBtn" style="display:none;" onclick="abShowSendModal()">📤 Send</button>
+                <button class="ab-btn ab-btn-danger" id="abDeleteBtn" style="display:none;" onclick="abDeleteSelected()">🗑️ Delete</button>
+                <button class="ab-btn ab-btn-ghost" onclick="abToggleImport()">📥 Import</button>
+                <button class="ab-btn ab-btn-primary" onclick="abToggleForm()">➕ Add Contact</button>
+            </div>
+        </div>
+
+        <!-- Add Contact Form -->
+        <div id="abAddForm" class="ab-form-panel" style="display:none;">
+            <h3>New Contact</h3>
+            <div class="ab-form-grid">
+                <div class="ab-form-group">
+                    <label>Full Name *</label>
+                    <input type="text" id="abNewName" placeholder="Satoshi Nakamoto" required>
+                </div>
+                <div class="ab-form-group">
+                    <label>Bitcoin Address (optional)</label>
+                    <input type="text" id="abNewBitcoin" placeholder="1A1zP1eP5QGefi2DMPTfTL5SLmv7DivfNa">
+                </div>
+            </div>
+            <div class="ab-form-actions">
+                <button class="ab-btn ab-btn-primary" onclick="abAddContact()">✓ Save Contact</button>
+                <button class="ab-btn ab-btn-ghost" onclick="abToggleForm()">Cancel</button>
+            </div>
+        </div>
+
+        <!-- Import Panel -->
+        <div id="abImportPanel" class="ab-form-panel" style="display:none;">
+            <h3>📥 Import Bitcoin Addresses</h3>
+            <p style="color:var(--text-muted);font-size:0.85rem;margin-bottom:1.25rem;">
+                Upload a <strong style="color:var(--text-secondary);">CSV file</strong> or paste a <strong style="color:var(--text-secondary);">list of addresses</strong> below. 
+                Each address gets an auto-generated name with the <code style="color:var(--accent-orange);background:var(--bg-primary);padding:2px 6px;border-radius:4px;">BTC-</code> prefix.
+            </p>
+
+            <!-- Tabs: CSV vs Paste -->
+            <div class="ab-import-tabs">
+                <button class="ab-import-tab active" onclick="abSwitchImportTab('csv', this)">📄 Upload CSV</button>
+                <button class="ab-import-tab" onclick="abSwitchImportTab('paste', this)">📋 Paste List</button>
+            </div>
+
+            <!-- CSV Upload -->
+            <div id="abImportCsvPanel" class="ab-import-body">
+                <div class="ab-dropzone" id="abDropzone" onclick="document.getElementById('abCsvFile').click()"
+                     ondragover="event.preventDefault();this.classList.add('drag-over')"
+                     ondragleave="this.classList.remove('drag-over')"
+                     ondrop="abHandleDrop(event)">
+                    <div class="ab-dropzone-icon">📄</div>
+                    <div class="ab-dropzone-text">Click or drag & drop a CSV file</div>
+                    <div class="ab-dropzone-sub">One Bitcoin address per row. Names optional (col 1 = name, col 2 = address)</div>
+                    <input type="file" id="abCsvFile" accept=".csv,.txt" style="display:none;" onchange="abHandleCsvUpload(event)">
+                </div>
+                <div id="abCsvFilename" style="display:none;" class="ab-file-chosen"></div>
+            </div>
+
+            <!-- Paste List -->
+            <div id="abImportPastePanel" class="ab-import-body" style="display:none;">
+                <div class="ab-form-group">
+                    <label>Paste addresses (one per line)</label>
+                    <textarea id="abPasteInput" rows="6" placeholder="1A1zP1eP5QGefi2DMPTfTL5SLmv7DivfNa&#10;3J98t1WpEZ73CNmYviecrnyiWrnqRhWNLy&#10;bc1qar0srrr7xfkvy5l643lydnw9re59gtzzwf5mdq"></textarea>
+                </div>
+            </div>
+
+            <!-- Name prefix -->
+            <div class="ab-form-group" style="margin-top:1rem;">
+                <label>Name prefix</label>
+                <input type="text" id="abImportPrefix" value="BTC" placeholder="BTC" style="max-width:180px;">
+                <span style="font-size:0.78rem;color:var(--text-muted);margin-top:0.3rem;">
+                    Contacts will be named <span id="abPrefixPreview" style="color:var(--accent-orange);font-weight:700;">BTC-1</span>, <span style="color:var(--accent-orange);font-weight:700;">BTC-2</span>, ...
+                </span>
+            </div>
+
+            <!-- Preview area -->
+            <div id="abImportPreview" style="display:none;">
+                <div class="ab-import-preview-header">
+                    <span id="abImportPreviewCount"></span>
+                    <span id="abImportInvalidCount" style="color:var(--accent-red);"></span>
+                </div>
+                <div class="ab-import-preview-list" id="abImportPreviewList"></div>
+            </div>
+
+            <div class="ab-form-actions" style="margin-top:1.25rem;">
+                <button class="ab-btn ab-btn-primary" onclick="abConfirmImport()" id="abImportConfirmBtn" disabled>✓ Import Contacts</button>
+                <button class="ab-btn ab-btn-ghost" onclick="abToggleImport()">Cancel</button>
+            </div>
+        </div>
+
+        <!-- Contact List -->
+        <div id="abList" class="ab-list"></div>
+
+        <!-- Storage footer -->
+        <div style="margin-top:1.5rem;padding-top:1rem;border-top:1px solid var(--border);display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:0.5rem;">
+            <span style="font-size:0.78rem;color:var(--text-muted);">💾 Changes are automatically saved to your browser's localStorage.</span>
+            <button class="ab-pick-btn" style="color:var(--accent-red);opacity:0.7;" onclick="abClearStorage()">🗑 Clear saved data</button>
+        </div>
+    </div>
+
+    <!-- Broadcast Transaction Tab -->
+    <div class="card tab-content" id="broadcast-tx">
+        <div class="card-header">
+            <div class="card-icon" style="background:linear-gradient(135deg,#f7931a,#ff6b35);">📡</div>
+            <h2 class="card-title">Broadcast Transaction & Mempool Explorer</h2>
+        </div>
+
+        <!-- Network Pulse Stats -->
+        <div class="net-stats-header">
+            <span class="net-stats-title">⚡ Live Network Stats</span>
+            <div style="display:flex;align-items:center;gap:0.85rem;flex-wrap:wrap;">
+                <span class="net-updated" id="netUpdatedAt">—</span>
+                <span class="net-live-badge"><span class="net-live-dot"></span> LIVE</span>
+            </div>
+        </div>
+        <div class="net-pulse-grid">
+            <div class="net-pulse-card" id="npc-hashrate">
+                <div class="npc-label">⛏ Hash Rate</div>
+                <div class="npc-value" id="bcastHashrate">—</div>
+                <div class="npc-sub" id="npcHashSub">Loading…</div>
+                <canvas class="npc-spark" id="sparkHashrate"></canvas>
+            </div>
+            <div class="net-pulse-card" id="npc-diff">
+                <div class="npc-label">🎯 Difficulty</div>
+                <div class="npc-value" id="bcastDifficulty">—</div>
+                <div class="npc-sub">Adj in <span id="npcDiffBlocks">—</span> blks</div>
+            </div>
+            <div class="net-pulse-card" id="npc-mempool">
+                <div class="npc-label">📦 Mempool</div>
+                <div class="npc-value" id="bcastMempoolSize">—</div>
+                <div class="npc-sub" id="npcMempoolSub">Loading…</div>
+                <div class="npc-bar-track"><div class="npc-bar-fill" id="npcMempoolFill"></div></div>
+            </div>
+            <div class="net-pulse-card" id="npc-fee">
+                <div class="npc-label">💸 Fee (L/M/H)</div>
+                <div class="npc-value" id="bcastFeeRate">—</div>
+                <div class="npc-sub" id="npcFeeSub">sat/vB</div>
+            </div>
+            <div class="net-pulse-card" id="npc-block">
+                <div class="npc-label">🔗 Block Height</div>
+                <div class="npc-value" id="bcastBlockHeight">—</div>
+                <div class="npc-sub">Next ~<span id="npcNextBlock">—</span></div>
+            </div>
+        </div>
+
+        <!-- Two-column layout -->
+        <div class="bcast-layout">
+
+            <!-- LEFT: Broadcast Form + Broadcast History -->
+            <div class="bcast-left">
+                <div class="bcast-section">
+                    <h3 class="section-title">📡 Broadcast Raw Transaction</h3>
+                    <p style="color:var(--text-muted);font-size:0.85rem;margin-bottom:1rem;">
+                        Paste a signed raw transaction hex below to broadcast it through the node. The transaction will be tracked through the 6-confirmation finality standard introduced in the Bitcoin whitepaper.
+                    </p>
+
+                    <div class="form-group">
+                        <label class="label-with-help">
+                            Signed Raw Transaction (Hex)
+                            <span class="help-icon" title="Full signed raw tx hex, ready to broadcast">?</span>
+                        </label>
+                        <textarea id="bcastRawTx" rows="5" placeholder="01000000017f6c98..."></textarea>
+                    </div>
+
+                    <div class="form-group" style="margin-top:0.75rem;">
+                        <label>Priority / Fee Tier</label>
+                        <div class="bcast-fee-tiers">
+                            <label class="bcast-tier-btn active" id="tierLow">
+                                <input type="radio" name="feeTier" value="low" checked style="display:none">
+                                <span class="tier-icon">🐢</span>
+                                <span class="tier-name">Economy</span>
+                                <span class="tier-fee" id="tierLowFee">1–5 sat/vB</span>
+                                <span class="tier-eta">~60 min</span>
+                            </label>
+                            <label class="bcast-tier-btn" id="tierMed">
+                                <input type="radio" name="feeTier" value="medium" style="display:none">
+                                <span class="tier-icon">🚗</span>
+                                <span class="tier-name">Normal</span>
+                                <span class="tier-fee" id="tierMedFee">5–20 sat/vB</span>
+                                <span class="tier-eta">~30 min</span>
+                            </label>
+                            <label class="bcast-tier-btn" id="tierHigh">
+                                <input type="radio" name="feeTier" value="high" style="display:none">
+                                <span class="tier-icon">🚀</span>
+                                <span class="tier-name">Priority</span>
+                                <span class="tier-fee" id="tierHighFee">20–50 sat/vB</span>
+                                <span class="tier-eta">~10 min</span>
+                            </label>
+                        </div>
+                    </div>
+
+                    <div class="button-group" style="margin-top:1.25rem;">
+                        <button id="bcastBtn" onclick="broadcastTransaction()">📡 Broadcast Transaction</button>
+                        <button class="btn-secondary" onclick="document.getElementById('bcastRawTx').value=''">Clear</button>
+                    </div>
+
+                    <div id="bcastLoading" class="loading">
+                        <div class="spinner"></div>
+                        <span>Propagating to network nodes...</span>
+                    </div>
+                </div>
+
+                <!-- Broadcast Result -->
+                <div id="bcastResultBox" class="bcast-result-box" style="display:none;"></div>
+
+                <!-- Broadcast History -->
+                <div class="bcast-section" style="margin-top:1.5rem;">
+                    <h3 class="section-title">📋 Broadcast History <span id="bcastHistoryCount" style="font-size:0.8rem;color:var(--text-muted);font-weight:400;margin-left:0.5rem;"></span></h3>
+                    <div id="bcastHistory">
+                        <div style="color:var(--text-muted);font-size:0.88rem;text-align:center;padding:1.5rem 0;">No broadcasts yet</div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- RIGHT: Mempool + Blocks + Hashrate -->
+            <div class="bcast-right">
+
+                <!-- Hashrate Chart -->
+                <div class="bcast-section">
+                    <h3 class="section-title">⛏ Hash Rate (14d)</h3>
+                    <div class="bcast-chart-wrap">
+                        <canvas id="hashrateChart" height="120"></canvas>
+                    </div>
+                    <div class="bcast-chart-labels" id="hashrateLabels"></div>
+                </div>
+
+                <!-- Mempool Depth -->
+                <div class="bcast-section" style="margin-top:1rem;">
+                    <h3 class="section-title">🌊 Mempool Depth</h3>
+                    <div id="mempoolBars"></div>
+                    <div class="bcast-mempool-legend">
+                        <span class="bcast-legend-dot" style="background:#ff4757;"></span> High fee (≥50 sat/vB) &nbsp;
+                        <span class="bcast-legend-dot" style="background:#f7931a;"></span> Medium &nbsp;
+                        <span class="bcast-legend-dot" style="background:#4a9eff;"></span> Low fee
+                    </div>
+                </div>
+
+                <!-- Latest Blocks -->
+                <div class="bcast-section" style="margin-top:1rem;">
+                    <h3 class="section-title">🔗 Latest Blocks</h3>
+                    <div id="latestBlocks"></div>
+                </div>
+
+            </div>
+        </div>
+    </div>
+
+    <!-- Address Book Picker Modal (for TX Builder) -->
+    <div id="abPickerModal" class="ab-picker-overlay">
+        <div class="ab-picker-modal">
+            <div class="ab-picker-header">
+                <div>
+                    <div class="ab-picker-title">📓 Select from Address Book</div>
+                    <div class="ab-picker-subtitle">Only contacts with a valid Bitcoin address can be selected</div>
+                </div>
+                <button class="ab-picker-close" onclick="abClosePicker()">✕</button>
+            </div>
+            <div class="ab-picker-list" id="abPickerList"></div>
+        </div>
+    </div>
+
+    <!-- Send Modal -->
+    <div id="abSendModal" class="ab-modal-overlay">
+        <div class="ab-modal">
+            <div class="ab-modal-header">
+                <div class="ab-modal-title">📤 Send To Recipients</div>
+                <button class="ab-modal-close" onclick="abCloseSendModal()">✕</button>
+            </div>
+            <p style="color: var(--text-muted); font-size: 0.9rem;">Sending to <strong id="abRecipientCount" style="color: var(--text-primary);">0</strong> recipient(s):</p>
+            <div class="ab-recipient-list" id="abRecipientList"></div>
+            <div class="ab-modal-actions">
+                <button class="ab-btn ab-btn-primary" onclick="abConfirmSend()">✓ Confirm Send</button>
+                <button class="ab-btn ab-btn-ghost" onclick="abCloseSendModal()">Cancel</button>
+            </div>
+        </div>
+    </div>
+
+    <div class="results" id="results">
+        <div class="card">
+            <div class="card-header">
+                <div class="card-icon verify">✓</div>
+                <h2 class="card-title">Verification Results</h2>
+            </div>
+
+            <div id="resultsContent"></div>
+        </div>
+    </div>
+
+    <div class="footer">
+        <p><strong>Educational Tool:</strong> This application generates unsigned Bitcoin transactions for learning purposes. Transaction Builder creates raw hex that follows Bitcoin protocol rules but requires signing with private keys before broadcasting. Always verify transactions on blockchain explorers and use proper wallet software for production use.</p>
+    </div>
+</div>
+    </div>
+
+    <!-- Notifications -->
+    <div id="abSaveToast" class="ab-save-toast">
+        <span>💾</span><span>Saved to browser</span>
+    </div>
+
+    <!-- Live Mempool Ticker (fixed bottom bar) -->
+    <div class="mempool-ticker">
+        <div class="ticker-inner" id="tickerInner">
+            <span class="tick-item">
+                <span class="tick-dot"></span>
+                <span class="tick-label">Mempool</span>
+                <span class="tick-val">Loading…</span>
+            </span>
+        </div>
+    </div>
+
+    <script src="main.js"></script>
+</body>
+</html>
